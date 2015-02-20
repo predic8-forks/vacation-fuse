@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Configures the Camel Context -->
+
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:amq="http://activemq.apache.org/schema/core"
+	xsi:schemaLocation="
+       http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+       http://camel.apache.org/schema/spring http://camel.apache.org/schema/spring/camel-spring.xsd
+       http://activemq.apache.org/schema/core http://activemq.apache.org/schema/core/activemq-core.xsd">
+
+
+	<bean id="activemq" class="org.apache.activemq.camel.component.ActiveMQComponent">
+		<property name="brokerURL" value="tcp://localhost:61616" />
+		<property name="userName" value="admin" />
+		<property name="password" value="admin" />
+	</bean>
+
+
+	<camelContext xmlns="http://camel.apache.org/schema/spring">
+  <dataFormats>
+    <xmljson id="xmljson"/>
+  </dataFormats>
+  <route>
+    <from uri="jetty:http://localhost:8080/vacation/" id="in">
+      <description/>
+    </from>
+    <unmarshal ref="xmljson"/>
+    <setHeader headerName="city">
+      <xpath>//city/text()</xpath>
+    </setHeader>
+    <setHeader headerName="name">
+      <xpath>//name/text()</xpath>
+    </setHeader>
+    <log message="${header.name} wants to go to ${header.city}"/>
+    <setHeader headerName="CamelHttpPath">
+      <simple>data/2.5/find?q=${header.city}&amp;units=metric&amp;mode=xml</simple>
+    </setHeader>
+    <setHeader headerName="CamelHttpMethod">
+      <constant>GET</constant>
+    </setHeader>
+    <to uri="jetty:http://api.openweathermap.org/?bridgeEndpoint=true"/>
+    <convertBodyTo type="org.w3c.dom.Document"/>
+    <setHeader headerName="count">
+      <xpath>//count/text()</xpath>
+    </setHeader>
+    <to uri="xslt:weather2booking.xsl"/>
+    <choice>
+      <when>
+        <simple>${header.count} != 1</simple>
+        <setHeader headerName="CamelHttpResponseCode">
+          <simple>404</simple>
+        </setHeader>
+        <setBody>
+          <simple>{ 'message' : 'city not found' }</simple>
+        </setBody>
+      </when>
+      <when>
+        <xpath>//temp &gt; 20</xpath>
+        <to uri="activemq:beach"/>
+        <setBody>
+          <simple>{ "message" : "Enjoy the sun!" }</simple>
+        </setBody>
+      </when>
+      <otherwise>
+        <to uri="activemq:ski"/>
+        <setBody>
+          <simple>{ "message" : "You go skiing!" }</simple>
+        </setBody>
+      </otherwise>
+    </choice>
+  </route>
+</camelContext>
+
+</beans>
